@@ -40,24 +40,46 @@ img_channels = 3
 lr_reducer = keras.callbacks.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6)
 early_stopper = keras.callbacks.callbacks.EarlyStopping(min_delta=0.001, patience=10)
 
-class Data(object):
-    '''
-    get the cifar100 data ready
-    '''
+def _bn_relu_conv(**conv_params):
 
-    def __init__(self):
-        x=1
+    filters = conv_params["filters"]
+    kernel_size = conv_params["kernel_size"]
+    strides = conv_params.setdefault("strides", (1, 1))
+    kernel_initializer = conv_params.setdefault("kernel_initializer", "he_normal")
+    padding = conv_params.setdefault("padding", "same")
+    kernel_regularizer = conv_params.setdefault("kernel_regularizer", l2(1.e-4))
 
-def identityBlock():
-    '''
-    block used in the shortcut
+    def f(input):
+        activation = BatchNormalization(input)
+        return Conv2D(filters=filters, kernel_size=kernel_size,
+                      strides=strides, padding=padding,
+                      kernel_initializer=kernel_initializer,
+                      kernel_regularizer=kernel_regularizer)(activation)
 
-    '''
+    return f
 
-def convBlock():
+def basic_block(filters, init_strides=(1, 1), is_first_block_of_first_layer=False):
     '''
-    conv block not used in the shortcut
+    No bottleneck Residual unit used 
+    According to the paper and the diagram, a basic conv block has a 1 -> 3 -> 1 structure.
     '''
+    def f(input):
+
+        if is_first_block_of_first_layer:
+            # don't repeat bn->relu since we just did bn->relu->maxpool
+            conv1 = Conv2D(filters=filters, kernel_size=(3, 3),
+                           strides=init_strides,
+                           padding="same",
+                           kernel_initializer="he_normal",
+                           kernel_regularizer=l2(1e-4))(input)
+        else:
+            conv1 = _bn_relu_conv(filters=filters, kernel_size=(3, 3),
+                                  strides=init_strides)(input)
+
+        residual = _bn_relu_conv(filters=filters, kernel_size=(3, 3))(conv1)
+        return _shortcut(input, residual)
+
+    return f
 
 class Resnet(object):
     '''
@@ -65,10 +87,7 @@ class Resnet(object):
     '''
     @staticmethod
     def build(input_shape, num_outputs, block_fn, repetitions):
-        '''
-        No bottleneck Residual unit used 
-        According to the paper and the diagram, a basic conv block has a 1 -> 3 -> 1 structure.
-        '''
+        
 
         input = Input(shape=input_shape)
         conv1 = _conv_bn_relu(filters=64, kernel_size=(7, 7), strides=(2, 2))(input)
