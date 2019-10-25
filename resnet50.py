@@ -24,14 +24,14 @@ from keras.layers.convolutional import Conv2D,MaxPooling2D,AveragePooling2D
 from keras.layers.merge import add
 from keras.layers.normalization import BatchNormalization
 from keras.regularizers import l2
-from keras.datasets import cifar10
+from keras.datasets import cifar100
 
 from keras import backend as K
 
 # Training parameters
 batch_size = 32  # orig paper trained all networks with batch_size=128
 epochs = 50
-num_classes = 10
+num_classes = 100
 
 # input image dimensions
 img_rows, img_cols = 32, 32
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     early_stopper = keras.callbacks.callbacks.EarlyStopping(min_delta=0.001, patience=10)
 
     # Load the CIFAR10 data.
-    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+    (x_train, y_train), (x_test, y_test) = cifar100.load_data()
 
     # Input image dimensions.
     input_shape = x_train.shape[1:]
