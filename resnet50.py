@@ -35,9 +35,9 @@ num_classes = 100
 
 # input image dimensions
 img_rows, img_cols = 32, 32
-# The CIFAR10 images are RGB.
+# The CIFAR100 images are RGB.
 img_channels = 3
-LR = 0.0001
+LR = 0.001
 
 def _conv_bn_relu(**conv_params):
     """Helper to build a conv -> BN -> relu block
@@ -122,18 +122,19 @@ def basic_block(filters, init_strides=(1, 1), is_first_block_of_first_layer=Fals
 
         if is_first_block_of_first_layer:
             # don't repeat bn->relu since we just did bn->relu->maxpool
-            conv1 = Conv2D(filters=filters, kernel_size=(3, 3),
-                           strides=init_strides,
-                           padding="same",
-                           kernel_initializer="he_normal",
-                           kernel_regularizer=l2(1e-4))(input)
+            conv_1_1 = Conv2D(filters=filters, kernel_size=(1, 1),
+                              strides=init_strides,
+                              padding="same",
+                              kernel_initializer="he_normal",
+                              kernel_regularizer=l2(1e-4))(input)
         else:
-            conv1 = _bn_relu_conv(filters=filters, kernel_size=(3, 3),
-                                  strides=init_strides)(input)
+            conv_1_1 = _bn_relu_conv(filters=filters, kernel_size=(1, 1),
+                                     strides=init_strides)(input)
 
-        residual = _bn_relu_conv(filters=filters, kernel_size=(3, 3))(conv1)
+        conv_3_3 = _bn_relu_conv(filters=filters, kernel_size=(3, 3))(conv_1_1)
+        residual = _bn_relu_conv(filters=filters * 4, kernel_size=(1, 1))(conv_3_3)
         return _shortcut(input, residual)
-
+        
     return f
 
 class Resnet(object):
