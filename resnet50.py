@@ -27,6 +27,7 @@ from keras.regularizers import l2
 from keras.datasets import cifar100
 
 from keras import backend as K
+from keras.applications.resnet50 import ResNet50
 
 # Training parameters
 batch_size = 128  # orig paper trained all networks with batch_size=128
@@ -98,6 +99,7 @@ def _shortcut(input, residual):
                           kernel_initializer="he_normal",
                           kernel_regularizer=l2(0.0001))(input)
 
+
     return add([shortcut, residual])
 
 def _residual_block(block_function, filters, repetitions, is_first_layer=False):
@@ -162,8 +164,6 @@ class Resnet(object):
             if (r == 3 or r == 4) :
                 block = Dropout(.2)(block)
                 
-
-
         # Last activation
         block = Activation("relu")(BatchNormalization(axis=3)(block))
 
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     '''
         
     early_stopper = keras.callbacks.callbacks.EarlyStopping(min_delta=0.001, patience=10)
-    adam = keras.optimizers.Adam(learning_rate=LR, decay=1e-6,beta_1=0.9, beta_2=0.999, amsgrad=False)
+    sgd = keras.optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
 
     # Load the CIFAR10 data.
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
@@ -200,10 +200,12 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
 
-    model = Resnet.build((img_channels, img_rows, img_cols), num_classes,basic_block,[3, 4, 6, 3])
+    """ model = Resnet.build((img_channels, img_rows, img_cols), num_classes,basic_block,[3, 4, 6, 3]) """
+    model = ResNet50
+
 
     model.compile(loss='categorical_crossentropy',
-              optimizer=adam,
+              optimizer=sgd,
               metrics=['accuracy'])
 
     print('Not using data augmentation.')
