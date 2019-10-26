@@ -31,22 +31,6 @@ subtract_pixel_mean = True
 
 model_type = 'ResNet%d' % (depth)
 
-(x_train, y_train), (x_test, y_test) = cifar100.load_data()
-input_shape = x_train.shape[1:]
-x_train = x_train.astype('float32') / 255
-x_test = x_test.astype('float32') / 255
-
-x_train_mean = np.mean(x_train, axis=0)
-x_train -= x_train_mean
-x_test -= x_train_mean
-
-print('x_train shape:', x_train.shape)
-print(x_train.shape[0], 'train samples')
-print(x_test.shape[0], 'test samples')
-print('y_train shape:', y_train.shape)
-
-y_train = keras.utils.to_categorical(y_train, num_classes)
-y_test = keras.utils.to_categorical(y_test, num_classes)
 
 def lr_schedule(epoch):
     lr = 1e-3
@@ -99,6 +83,7 @@ def resnet_v2(input_shape, depth, num_classes=100):
     num_res_blocks = int((depth - 2) / 9)
 
     inputs = Input(shape=input_shape)
+    
     # v2 performs Conv2D with BN-ReLU on input before splitting into 2 paths
     x = resnet_layer(inputs=inputs,
                      num_filters=num_filters_in,
@@ -160,36 +145,53 @@ def resnet_v2(input_shape, depth, num_classes=100):
     model = Model(inputs=inputs, outputs=outputs)
     return model
 
+if __name__ == "__main__":
+    (x_train, y_train), (x_test, y_test) = cifar100.load_data()
+    input_shape = x_train.shape[1:]
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
 
-model = resnet_v2(input_shape=input_shape, depth=depth)
+    x_train_mean = np.mean(x_train, axis=0)
+    x_train -= x_train_mean
+    x_test -= x_train_mean
 
-model.compile(loss='categorical_crossentropy',
-              optimizer=Adam(learning_rate=lr_schedule(0)),
-              metrics=['accuracy'])
-model.summary()
-print(model_type)
+    print('x_train shape:', x_train.shape)
+    print(x_train.shape[0], 'train samples')
+    print(x_test.shape[0], 'test samples')
+    print('y_train shape:', y_train.shape)
 
-lr_scheduler = LearningRateScheduler(lr_schedule)
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
 
-lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
-                               cooldown=0,
-                               patience=5,
-                               min_lr=0.5e-6)
+    model = resnet_v2(input_shape=input_shape, depth=depth)
 
-callbacks = [lr_reducer, lr_scheduler]
+    model.compile(loss='categorical_crossentropy',
+                optimizer=Adam(learning_rate=lr_schedule(0)),
+                metrics=['accuracy'])
+    model.summary()
+    print(model_type)
 
-# Run training, with or without data augmentation.
+    lr_scheduler = LearningRateScheduler(lr_schedule)
 
-model.fit(x_train, y_train,
-              batch_size=batch_size,
-              epochs=epochs,
-              validation_data=(x_test, y_test),
-              shuffle=True,
-              validation_split=0.1,
-              callbacks=callbacks)
+    lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
+                                cooldown=0,
+                                patience=5,
+                                min_lr=0.5e-6)
+
+    callbacks = [lr_reducer, lr_scheduler]
+
+    # Run training, with or without data augmentation.
+
+    model.fit(x_train, y_train,
+                batch_size=batch_size,
+                epochs=epochs,
+                validation_data=(x_test, y_test),
+                shuffle=True,
+                validation_split=0.1,
+                callbacks=callbacks)
 
 
-# Score trained model.
-scores = model.evaluate(x_test, y_test, verbose=1)
-print('Test loss:', scores[0])
-print('Test accuracy:', scores[1])
+    # Score trained model.
+    scores = model.evaluate(x_test, y_test, verbose=1)
+    print('Test loss:', scores[0])
+    print('Test accuracy:', scores[1])
