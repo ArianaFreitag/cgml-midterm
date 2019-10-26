@@ -200,8 +200,7 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
 
-    """ model = Resnet.build((img_channels, img_rows, img_cols), num_classes,basic_block,[3, 4, 6, 3]) """
-    model = ResNet50
+    model = Resnet.build((img_channels, img_rows, img_cols), num_classes,basic_block,[3, 4, 6, 3])
 
 
     model.compile(loss='categorical_crossentropy',
