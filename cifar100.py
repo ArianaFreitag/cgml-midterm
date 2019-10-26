@@ -1,6 +1,6 @@
 from __future__ import print_function
 import keras
-from keras.layers import Dense, Conv2D, BatchNormalization, Activation
+from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
 from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
@@ -83,7 +83,7 @@ def resnet_v2(input_shape, depth, num_classes=100):
     num_res_blocks = int((depth - 2) / 9)
 
     inputs = Input(shape=input_shape)
-    
+
     # v2 performs Conv2D with BN-ReLU on input before splitting into 2 paths
     x = resnet_layer(inputs=inputs,
                      num_filters=num_filters_in,
@@ -130,6 +130,8 @@ def resnet_v2(input_shape, depth, num_classes=100):
                                  activation=None,
                                  batch_normalization=False)
             x = keras.layers.add([x, y])
+            if ( stage == 1 or stage == 2 ):
+                x = Dropout(.2)(x)
 
         num_filters_in = num_filters_out
 
