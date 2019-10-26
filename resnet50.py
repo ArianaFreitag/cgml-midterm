@@ -18,7 +18,7 @@ import keras
 
 #Import keras related stuff
 from keras.models import Model
-from keras.layers import Input,Activation,Dense,Flatten
+from keras.layers import Input,Activation,Dense,Flatten,Dropout
 from keras.layers.convolutional import Conv2D,MaxPooling2D,AveragePooling2D
 
 from keras.layers.merge import add
@@ -29,7 +29,7 @@ from keras.datasets import cifar100
 from keras import backend as K
 
 # Training parameters
-batch_size = 32  # orig paper trained all networks with batch_size=128
+batch_size = 128  # orig paper trained all networks with batch_size=128
 epochs = 50
 num_classes = 100
 
@@ -37,6 +37,7 @@ num_classes = 100
 img_rows, img_cols = 32, 32
 # The CIFAR10 images are RGB.
 img_channels = 3
+LR = 0.0001
 
 def _conv_bn_relu(**conv_params):
     """Helper to build a conv -> BN -> relu block
@@ -154,8 +155,13 @@ class Resnet(object):
         block = pool1
         filters = 64
         for i, r in enumerate(repetitions):
+            
             block = _residual_block(block_fn, filters=filters, repetitions=r, is_first_layer=(i == 0))(block)
             filters *= 2
+            if (r == 3 or r == 4) :
+                block = Dropout(.2)(block)
+                
+
 
         # Last activation
         block = Activation("relu")(BatchNormalization(axis=3)(block))
@@ -176,8 +182,8 @@ if __name__ == "__main__":
     train the model here
     '''
         
-    lr_reducer = keras.callbacks.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=0.5e-6)
     early_stopper = keras.callbacks.callbacks.EarlyStopping(min_delta=0.001, patience=10)
+    adam = keras.optimizers.Adam(learning_rate=LR, decay=1e-6,beta_1=0.9, beta_2=0.999, amsgrad=False)
 
     # Load the CIFAR10 data.
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
@@ -196,7 +202,7 @@ if __name__ == "__main__":
     model = Resnet.build((img_channels, img_rows, img_cols), num_classes,basic_block,[3, 4, 6, 3])
 
     model.compile(loss='categorical_crossentropy',
-              optimizer='adam',
+              optimizer=adam,
               metrics=['accuracy'])
 
     print('Not using data augmentation.')
@@ -206,7 +212,7 @@ if __name__ == "__main__":
               validation_split=0.1,
               validation_data=(x_test, y_test),
               shuffle=True,
-              callbacks=[lr_reducer, early_stopper])
+              callbacks=[ early_stopper])
 
     model.summary()
 
