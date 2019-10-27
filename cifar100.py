@@ -1,8 +1,8 @@
 from __future__ import print_function
 import math
 import keras
-from keras.layers import Dense, Conv2D, BatchNormalization, Activation
-from keras.layers import AveragePooling2D, Input, Flatten
+from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
+from keras.layers import AveragePooling2D, Input, Flatten, Lambda
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau
@@ -14,9 +14,8 @@ from keras.datasets import cifar100
 import numpy as np
 import os
 import tensorflow as tf
-import tensorflow_probability as tfp
-
-from tensorflow.keras.layers import MaxPooling2D
+import numpy as np
+import matplotlib.pyplot as plt
 
 '''
 Implementation of Resnet-50 from "Deep Residual Learning for Image Recognition" (https://arxiv.org/pdf/1512.03385.pdf)
@@ -33,7 +32,7 @@ depth= 50
 
 # hyperparam
 BLCKSIZE = 3 # h and w of block
-KEEPPROB =0.9 # probability of activation unit being kept
+KEEPPROB = 0.9 # probability of activation unit being kept
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
@@ -69,7 +68,7 @@ def lr_schedule(epoch):
 def drop_block(A):
     '''
     Inputs:
-    A is the weights from the activation layer with shape [chan, row, col, batch_size]
+    A is the weights from the activation layer with shape [batch, row, col, chan]
     mode turns off drop block during inference
 
     Return:
@@ -80,36 +79,50 @@ def drop_block(A):
 
     block_size = BLCKSIZE
     keep_prob = KEEPPROB
+    feat_size = A.shape[2]
+    input_shape = [batch_size, feat_size-block_size+1, feat_size-block_size+1, A.shape[3]]
+
 
     # compute gamma
-    feat_size = A.shape[2]
-
     term_1 = (1 - keep_prob) / (block_size)**2
     term_2 = (feat_size)**2 / (feat_size-block_size+1)**2
     gamma = term_1 * term_2
 
+    #set padding
+    p1 = (block_size - 1) // 2
+    p0 = (block_size - 1) - p1
+    padding = [[0, 0], [p0, p1], [p0, p1], [0, 0]]
+
     # create mask from Bernoulli distribution
-    tfd = tfp.distributions
-    dist = tfd.Sample(tfd.Bernoulli(probs=[gamma]), sample_shape=[A.shape[1], A.shape[2],A.shape[3]])
-    block_mask = dist.sample()
+    block_mask = tf.nn.relu(tf.sign(gamma - tf.random.uniform(input_shape, minval=0, maxval=1, dtype=tf.float32)))
+    block_mask = tf.pad(block_mask, padding)
 
     # place mask on A
-    block_mask = tf.nn.max_pool(block_mask, ksize=(block_size, block_size), strides=(1, 1), padding='SAME')
+    block_mask = 1 - tf.nn.max_pool(block_mask, [1, block_size, block_size, 1], [1, 1, 1, 1], 'SAME')
 
-    # if block_size%2 == 0:
-    #     block_mask = block_mask[:, :-1, :-1, :]
-    # else:
-    #     pass
+    # img = np.array(block_mask[0,:,:,0])
+    # plt.imshow(lol)
+    # plt.show()
+    # input()
 
-    drop_mask = tf.squeeze(1-block_mask)
+    # A = tf.reshape(None, [batch_size, A.shape[1], A.shape[2], A.shape[3]])
+    A = tf.cast(A, dtype=tf.float32)
+    block_mask = tf.cast(block_mask, dtype=tf.float32)
+
 
     # apply the mask
-    applied_mask = A * drop_mask
+    applied_mask = tf.multiply(block_mask, A)
 
     # scale the data
-    scaled_data = applied_mask * tf.size(drop_mask)/tf.reduce_sum(drop_mask)
+    # print(tf.cast(tf.size(block_mask), dtype=tf.float32)/tf.reduce_sum(block_mask))
+
+    scaled_data = applied_mask * tf.cast(tf.size(block_mask), dtype=tf.float32)/tf.reduce_sum(block_mask)
+    scaled_data = tf.keras.backend.cast(scaled_data,"float32")
 
     return scaled_data
+
+def drop_block_output(A):
+    return [batch_size, A[1], A[2], A[3]]
 
 def resnet_layer(inputs,
                  num_filters=16,
@@ -196,7 +209,11 @@ def resnet_v2(input_shape, depth, num_classes=100):
             x = keras.layers.add([x, y])
 
             if ( stage == 1 or stage == 2 ):
-                x = drop_block(x)
+                layer = Lambda(drop_block, drop_block_output)
+                x = layer(x)
+                # x = drop_block(x)
+                print('hi',x.shape)
+                # x = Dropout(.2)(x)
 
         num_filters_in = num_filters_out
 
