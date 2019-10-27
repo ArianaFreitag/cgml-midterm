@@ -1,7 +1,8 @@
 from __future__ import print_function
+import math
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
-from keras.layers import AveragePooling2D, Input, Flatten
+from keras.layers import AveragePooling2D, Input, Flatten, Lambda
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau
@@ -12,6 +13,9 @@ from keras.models import Model
 from keras.datasets import cifar100
 import numpy as np
 import os
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 
 '''
 Implementation of Resnet-50 from "Deep Residual Learning for Image Recognition" (https://arxiv.org/pdf/1512.03385.pdf)
@@ -26,11 +30,27 @@ epochs = 200
 num_classes = 100
 depth= 50
 
+# hyperparam
+BLCKSIZE = 3 # h and w of block
+KEEPPROB = 0.9 # probability of activation unit being kept
+
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
 
 model_type = 'ResNet%d' % (depth)
 
+(x_train, y_train), (x_test, y_test) = cifar100.load_data()
+input_shape = x_train.shape[1:]
+x_train = x_train.astype('float32') / 255
+x_test = x_test.astype('float32') / 255
+
+x_train_mean = np.mean(x_train, axis=0)
+x_train -= x_train_mean
+x_test -= x_train_mean
+
+
+y_train = keras.utils.to_categorical(y_train, num_classes)
+y_test = keras.utils.to_categorical(y_test, num_classes)
 
 def lr_schedule(epoch):
     lr = 1e-3
@@ -45,6 +65,64 @@ def lr_schedule(epoch):
     print('Learning rate: ', lr)
     return lr
 
+def drop_block(A):
+    '''
+    Inputs:
+    A is the weights from the activation layer with shape [batch, row, col, chan]
+    mode turns off drop block during inference
+
+    Return:
+    activation layer with correlated blocks dropped
+
+    Implementation from: https://arxiv.org/pdf/1810.12890.pdf
+    '''
+
+    block_size = BLCKSIZE
+    keep_prob = KEEPPROB
+    feat_size = A.shape[2]
+    input_shape = [batch_size, feat_size-block_size+1, feat_size-block_size+1, A.shape[3]]
+
+
+    # compute gamma
+    term_1 = (1 - keep_prob) / (block_size)**2
+    term_2 = (feat_size)**2 / (feat_size-block_size+1)**2
+    gamma = term_1 * term_2
+
+    #set padding
+    p1 = (block_size - 1) // 2
+    p0 = (block_size - 1) - p1
+    padding = [[0, 0], [p0, p1], [p0, p1], [0, 0]]
+
+    # create mask from Bernoulli distribution
+    block_mask = tf.nn.relu(tf.sign(gamma - tf.random.uniform(input_shape, minval=0, maxval=1, dtype=tf.float32)))
+    block_mask = tf.pad(block_mask, padding)
+
+    # place mask on A
+    block_mask = 1 - tf.nn.max_pool(block_mask, [1, block_size, block_size, 1], [1, 1, 1, 1], 'SAME')
+
+    # img = np.array(block_mask[0,:,:,0])
+    # plt.imshow(lol)
+    # plt.show()
+    # input()
+
+    # A = tf.reshape(None, [batch_size, A.shape[1], A.shape[2], A.shape[3]])
+    A = tf.cast(A, dtype=tf.float32)
+    block_mask = tf.cast(block_mask, dtype=tf.float32)
+
+
+    # apply the mask
+    applied_mask = tf.multiply(block_mask, A)
+
+    # scale the data
+    # print(tf.cast(tf.size(block_mask), dtype=tf.float32)/tf.reduce_sum(block_mask))
+
+    scaled_data = applied_mask * tf.cast(tf.size(block_mask), dtype=tf.float32)/tf.reduce_sum(block_mask)
+    scaled_data = tf.keras.backend.cast(scaled_data,"float32")
+
+    return scaled_data
+
+def drop_block_output(A):
+    return [batch_size, A[1], A[2], A[3]]
 
 def resnet_layer(inputs,
                  num_filters=16,
@@ -53,7 +131,7 @@ def resnet_layer(inputs,
                  activation='relu',
                  batch_normalization=True,
                  conv_first=True):
-   
+
     conv = Conv2D(num_filters,
                   kernel_size=kernel_size,
                   strides=strides,
@@ -77,7 +155,7 @@ def resnet_layer(inputs,
     return x
 
 def resnet_v2(input_shape, depth, num_classes=100):
-  
+
     # Start model definition.
     num_filters_in = 16
     num_res_blocks = int((depth - 2) / 9)
@@ -132,6 +210,13 @@ def resnet_v2(input_shape, depth, num_classes=100):
             x = keras.layers.add([x, y])
             if ( stage == 1 or stage == 2 ):
                 x = Dropout(.2)(x)
+
+            if ( stage == 1 or stage == 2 ):
+                layer = Lambda(drop_block, drop_block_output)
+                x = layer(x)
+                # x = drop_block(x)
+                print('hi',x.shape)
+                # x = Dropout(.2)(x)
 
         num_filters_in = num_filters_out
 
