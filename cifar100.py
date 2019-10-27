@@ -1,4 +1,5 @@
 from __future__ import print_function
+import math
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation
 from keras.layers import AveragePooling2D, Input, Flatten
@@ -12,6 +13,10 @@ from keras.models import Model
 from keras.datasets import cifar100
 import numpy as np
 import os
+import tensorflow as tf
+import tensorflow_probability as tfp
+
+from tensorflow.keras.layers import MaxPooling2D
 
 '''
 Implementation of Resnet-50 from "Deep Residual Learning for Image Recognition" (https://arxiv.org/pdf/1512.03385.pdf)
@@ -25,6 +30,10 @@ batch_size = 128
 epochs = 200
 num_classes = 100
 depth= 50
+
+# hyperparam
+BLCKSIZE = 3 # h and w of block
+KEEPPROB =0.9 # probability of activation unit being kept
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
@@ -40,10 +49,6 @@ x_train_mean = np.mean(x_train, axis=0)
 x_train -= x_train_mean
 x_test -= x_train_mean
 
-print('x_train shape:', x_train.shape)
-print(x_train.shape[0], 'train samples')
-print(x_test.shape[0], 'test samples')
-print('y_train shape:', y_train.shape)
 
 y_train = keras.utils.to_categorical(y_train, num_classes)
 y_test = keras.utils.to_categorical(y_test, num_classes)
@@ -61,6 +66,50 @@ def lr_schedule(epoch):
     print('Learning rate: ', lr)
     return lr
 
+def drop_block(A):
+    '''
+    Inputs:
+    A is the weights from the activation layer with shape [chan, row, col, batch_size]
+    mode turns off drop block during inference
+
+    Return:
+    activation layer with correlated blocks dropped
+
+    Implementation from: https://arxiv.org/pdf/1810.12890.pdf
+    '''
+
+    block_size = BLCKSIZE
+    keep_prob = KEEPPROB
+
+    # compute gamma
+    feat_size = A.shape[2]
+
+    term_1 = (1 - keep_prob) / (block_size)**2
+    term_2 = (feat_size)**2 / (feat_size-block_size+1)**2
+    gamma = term_1 * term_2
+
+    # create mask from Bernoulli distribution
+    tfd = tfp.distributions
+    dist = tfd.Sample(tfd.Bernoulli(probs=[gamma]), sample_shape=[A.shape[1], A.shape[2],A.shape[3]])
+    block_mask = dist.sample()
+
+    # place mask on A
+    block_mask = tf.nn.max_pool(block_mask, ksize=(block_size, block_size), strides=(1, 1), padding='SAME')
+
+    # if block_size%2 == 0:
+    #     block_mask = block_mask[:, :-1, :-1, :]
+    # else:
+    #     pass
+
+    drop_mask = tf.squeeze(1-block_mask)
+
+    # apply the mask
+    applied_mask = A * drop_mask
+
+    # scale the data
+    scaled_data = applied_mask * tf.size(drop_mask)/tf.reduce_sum(drop_mask)
+
+    return scaled_data
 
 def resnet_layer(inputs,
                  num_filters=16,
@@ -69,7 +118,7 @@ def resnet_layer(inputs,
                  activation='relu',
                  batch_normalization=True,
                  conv_first=True):
-   
+
     conv = Conv2D(num_filters,
                   kernel_size=kernel_size,
                   strides=strides,
@@ -93,7 +142,7 @@ def resnet_layer(inputs,
     return x
 
 def resnet_v2(input_shape, depth, num_classes=100):
-  
+
     # Start model definition.
     num_filters_in = 16
     num_res_blocks = int((depth - 2) / 9)
@@ -145,6 +194,9 @@ def resnet_v2(input_shape, depth, num_classes=100):
                                  activation=None,
                                  batch_normalization=False)
             x = keras.layers.add([x, y])
+
+            if ( stage == 1 or stage == 2 ):
+                x = drop_block(x)
 
         num_filters_in = num_filters_out
 
