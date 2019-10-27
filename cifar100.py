@@ -2,7 +2,7 @@ from __future__ import print_function
 import math
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
-from keras.layers import AveragePooling2D, Input, Flatten, Lambda
+from keras.layers import AveragePooling2D, Input, Flatten, Lambda , MaxPooling2D
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau
@@ -82,6 +82,7 @@ def drop_block(A):
     block_size = BLCKSIZE
     keep_prob = KEEPPROB
     feat_size = A.shape[2]
+    print(A.shape)
     input_shape = [
         batch_size,
         feat_size - block_size + 1,
@@ -157,6 +158,8 @@ def resnet_layer(
     )
 
     x = inputs
+
+    #Either BN-RELU-CONV or CONV-BN-RELU depending on which step you are on
     if conv_first:
         x = conv(x)
         if batch_normalization:
@@ -173,19 +176,23 @@ def resnet_layer(
 
 
 def resnet_v2(input_shape, depth, num_classes=100):
+    # Tried to mimic this architecture from this https://raw.githubusercontent.com/raghakot/keras-resnet/master/images/architecture.png
 
     # Start model definition.
     num_filters_in = 16
-    num_res_blocks = int((depth - 2) / 9)
+    num_res_blocks = [3,4,6,3]
 
     inputs = Input(shape=input_shape)
 
-    # v2 performs Conv2D with BN-ReLU on input before splitting into 2 paths
-    x = resnet_layer(inputs=inputs, num_filters=num_filters_in, conv_first=True)
+    # v2 performs Conv2D with BN-ReLU on input 
+    x = resnet_layer(inputs=inputs, num_filters=num_filters_in*4, conv_first=True,strides = 2)
+
+    # 3x3 maxpool before the residual block starts
+    x =MaxPooling2D(pool_size=(3,3), strides=2, padding='valid', data_format='channels_last')(x)
 
     # Instantiate the stack of residual units
-    for stage in range(3):
-        for res_block in range(num_res_blocks):
+    for stage in range(4):
+        for res_block in range(num_res_blocks[stage]):
             activation = "relu"
             batch_normalization = True
             strides = 1
@@ -225,13 +232,10 @@ def resnet_v2(input_shape, depth, num_classes=100):
                     batch_normalization=False,
                 )
             x = keras.layers.add([x, y])
-            if stage == 1 or stage == 2:
-                x = Dropout(0.2)(x)
 
             if stage == 1 or stage == 2:
                 layer = Lambda(drop_block, drop_block_output)
                 x = layer(x)
-                # x = Dropout(.2)(x)
 
         num_filters_in = num_filters_out
 
