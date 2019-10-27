@@ -26,7 +26,7 @@ Minyoung Na and Ariana Freitag
 """
 # Training parameters
 batch_size = 100
-epochs = 200
+epochs = 300
 num_classes = 100
 depth = 50
 
