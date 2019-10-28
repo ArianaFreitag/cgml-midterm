@@ -2,7 +2,7 @@ from __future__ import print_function
 import math
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
-from keras.layers import AveragePooling2D, Input, Flatten, Lambda
+from keras.layers import AveragePooling2D, Input, Flatten, Lambda, MaxPooling2D
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau
@@ -157,6 +157,8 @@ def resnet_layer(
     )
 
     x = inputs
+
+    # Either BN-RELU-CONV or CONV-BN-RELU depending on which step you are on
     if conv_first:
         x = conv(x)
         if batch_normalization:
@@ -173,33 +175,38 @@ def resnet_layer(
 
 
 def resnet_v2(input_shape, depth, num_classes=100):
+    # Tried to mimic this architecture from this https://raw.githubusercontent.com/raghakot/keras-resnet/master/images/architecture.png
 
     # Start model definition.
-    num_filters_in = 16
-    num_res_blocks = int((depth - 2) / 9)
+    num_filters_in = 64
+    num_res_blocks = [3, 4, 6, 3]
 
     inputs = Input(shape=input_shape)
 
-    # v2 performs Conv2D with BN-ReLU on input before splitting into 2 paths
-    x = resnet_layer(inputs=inputs, num_filters=num_filters_in, conv_first=True)
+    # v2 performs Conv2D with BN-ReLU on input
+    x = resnet_layer(
+        inputs=inputs, num_filters=num_filters_in, conv_first=True, strides=2
+    )
+
+    # 3x3 maxpool before the residual block starts
+    x = MaxPooling2D(
+        pool_size=(3, 3), strides=2, padding="same", data_format="channels_last"
+    )(x)
 
     # Instantiate the stack of residual units
-    for stage in range(3):
-        for res_block in range(num_res_blocks):
+    for stage in range(4):
+        for res_block in range(num_res_blocks[stage]):
             activation = "relu"
             batch_normalization = True
             strides = 1
-            if stage == 0:
-                num_filters_out = num_filters_in * 4
-                if res_block == 0:  # first layer and first stage
-                    activation = None
-                    batch_normalization = False
-            else:
-                num_filters_out = num_filters_in * 2
-                if res_block == 0:  # first layer but not first stage
-                    strides = 2  # downsample
 
-            # bottleneck residual unit
+            num_filters_out = num_filters_in * 2
+
+            if stage == 0:  # first layer and first stage
+                activation = None
+                batch_normalization = False
+
+            # bottleneck residual unit , 1 x 3 x 1 structure
             y = resnet_layer(
                 inputs=x,
                 num_filters=num_filters_in,
@@ -225,19 +232,16 @@ def resnet_v2(input_shape, depth, num_classes=100):
                     batch_normalization=False,
                 )
             x = keras.layers.add([x, y])
-            if stage == 1 or stage == 2:
-                x = Dropout(0.2)(x)
 
             if stage == 1 or stage == 2:
                 layer = Lambda(drop_block, drop_block_output)
                 x = layer(x)
-                # x = Dropout(.2)(x)
 
         num_filters_in = num_filters_out
 
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = AveragePooling2D(pool_size=8)(x)
+    x = AveragePooling2D(pool_size=(2, 2))(x)
     y = Flatten()(x)
     outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(
         y
@@ -283,8 +287,6 @@ if __name__ == "__main__":
     )
 
     callbacks = [lr_reducer, lr_scheduler]
-
-    # Run training, with or without data augmentation.
 
     datagen = ImageDataGenerator(
         # set input mean to 0 over the dataset
