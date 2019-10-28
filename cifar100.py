@@ -2,7 +2,7 @@ from __future__ import print_function
 import math
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Dropout
-from keras.layers import AveragePooling2D, Input, Flatten, Lambda , MaxPooling2D
+from keras.layers import AveragePooling2D, Input, Flatten, Lambda, MaxPooling2D
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau
@@ -158,7 +158,7 @@ def resnet_layer(
 
     x = inputs
 
-    #Either BN-RELU-CONV or CONV-BN-RELU depending on which step you are on
+    # Either BN-RELU-CONV or CONV-BN-RELU depending on which step you are on
     if conv_first:
         x = conv(x)
         if batch_normalization:
@@ -179,15 +179,19 @@ def resnet_v2(input_shape, depth, num_classes=100):
 
     # Start model definition.
     num_filters_in = 64
-    num_res_blocks = [3,4,6,3]
+    num_res_blocks = [3, 4, 6, 3]
 
     inputs = Input(shape=input_shape)
 
-    # v2 performs Conv2D with BN-ReLU on input 
-    x = resnet_layer(inputs=inputs, num_filters=num_filters_in*4, conv_first=True,strides = 2)
+    # v2 performs Conv2D with BN-ReLU on input
+    x = resnet_layer(
+        inputs=inputs, num_filters=num_filters_in, conv_first=True, strides=2
+    )
 
     # 3x3 maxpool before the residual block starts
-    x =MaxPooling2D(pool_size=(3,3), strides=2, padding='valid', data_format='channels_last')(x)
+    x = MaxPooling2D(
+        pool_size=(3, 3), strides=2, padding="same", data_format="channels_last"
+    )(x)
 
     # Instantiate the stack of residual units
     for stage in range(4):
@@ -195,13 +199,12 @@ def resnet_v2(input_shape, depth, num_classes=100):
             activation = "relu"
             batch_normalization = True
             strides = 1
-            
-            num_filters_out = num_filters_in * 4
+
+            num_filters_out = num_filters_in * 2
 
             if stage == 0:  # first layer and first stage
                 activation = None
                 batch_normalization = False
-            
 
             # bottleneck residual unit , 1 x 3 x 1 structure
             y = resnet_layer(
@@ -238,9 +241,11 @@ def resnet_v2(input_shape, depth, num_classes=100):
 
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = AveragePooling2D(pool_size=(2,2))(x)
+    x = AveragePooling2D(pool_size=(2, 2))(x)
     y = Flatten()(x)
-    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(y)
+    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(
+        y
+    )
 
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs)
