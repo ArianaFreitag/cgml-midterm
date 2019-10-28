@@ -82,7 +82,6 @@ def drop_block(A):
     block_size = BLCKSIZE
     keep_prob = KEEPPROB
     feat_size = A.shape[2]
-    print(A.shape)
     input_shape = [
         batch_size,
         feat_size - block_size + 1,
@@ -179,7 +178,7 @@ def resnet_v2(input_shape, depth, num_classes=100):
     # Tried to mimic this architecture from this https://raw.githubusercontent.com/raghakot/keras-resnet/master/images/architecture.png
 
     # Start model definition.
-    num_filters_in = 16
+    num_filters_in = 64
     num_res_blocks = [3,4,6,3]
 
     inputs = Input(shape=input_shape)
@@ -196,17 +195,15 @@ def resnet_v2(input_shape, depth, num_classes=100):
             activation = "relu"
             batch_normalization = True
             strides = 1
-            if stage == 0:
-                num_filters_out = num_filters_in * 4
-                if res_block == 0:  # first layer and first stage
-                    activation = None
-                    batch_normalization = False
-            else:
-                num_filters_out = num_filters_in * 2
-                if res_block == 0:  # first layer but not first stage
-                    strides = 2  # downsample
+            
+            num_filters_out = num_filters_in * 4
 
-            # bottleneck residual unit
+            if stage == 0:  # first layer and first stage
+                activation = None
+                batch_normalization = False
+            
+
+            # bottleneck residual unit , 1 x 3 x 1 structure
             y = resnet_layer(
                 inputs=x,
                 num_filters=num_filters_in,
@@ -241,11 +238,9 @@ def resnet_v2(input_shape, depth, num_classes=100):
 
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = AveragePooling2D(pool_size=8)(x)
+    x = AveragePooling2D(pool_size=(2,2))(x)
     y = Flatten()(x)
-    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(
-        y
-    )
+    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(y)
 
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs)
@@ -287,8 +282,6 @@ if __name__ == "__main__":
     )
 
     callbacks = [lr_reducer, lr_scheduler]
-
-    # Run training, with or without data augmentation.
 
     datagen = ImageDataGenerator(
         # set input mean to 0 over the dataset
