@@ -28,7 +28,6 @@ Minyoung Na and Ariana Freitag
 batch_size = 100
 epochs = 300
 num_classes = 100
-depth = 50
 
 # hyperparam
 BLCKSIZE = 3  # h and w of block
@@ -174,7 +173,7 @@ def resnet_layer(
     return x
 
 
-def resnet_v2(input_shape, depth, num_classes=100):
+def resnet(input_shape):
     # Tried to mimic this architecture from this https://raw.githubusercontent.com/raghakot/keras-resnet/master/images/architecture.png
 
     # Start model definition.
@@ -207,7 +206,7 @@ def resnet_v2(input_shape, depth, num_classes=100):
                 batch_normalization = False
 
             # bottleneck residual unit , 1 x 3 x 1 structure
-            y = resnet_layer(
+            bottleneck = resnet_layer(
                 inputs=x,
                 num_filters=num_filters_in,
                 kernel_size=1,
@@ -216,10 +215,18 @@ def resnet_v2(input_shape, depth, num_classes=100):
                 batch_normalization=batch_normalization,
                 conv_first=False,
             )
-            y = resnet_layer(inputs=y, num_filters=num_filters_in, conv_first=False)
-            y = resnet_layer(
-                inputs=y, num_filters=num_filters_out, kernel_size=1, conv_first=False
+            bottleneck = resnet_layer(
+                inputs=bottleneck, 
+                num_filters=num_filters_in, 
+                conv_first=False
             )
+            bottleneck = resnet_layer(
+                inputs=bottleneck, 
+                num_filters=num_filters_out, 
+                kernel_size=1, 
+                conv_first=False
+            )
+
             if res_block == 0:
                 # linear projection residual shortcut connection to match
                 # changed dims
@@ -231,9 +238,9 @@ def resnet_v2(input_shape, depth, num_classes=100):
                     activation=None,
                     batch_normalization=False,
                 )
-            x = keras.layers.add([x, y])
+            x = keras.layers.add([x, bottleneck])
 
-            if stage == 1 or stage == 2:
+            if stage == 2 or stage == 3:
                 layer = Lambda(drop_block, drop_block_output)
                 x = layer(x)
 
@@ -242,9 +249,9 @@ def resnet_v2(input_shape, depth, num_classes=100):
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
     x = AveragePooling2D(pool_size=(2, 2))(x)
-    y = Flatten()(x)
+    x = Flatten()(x)
     outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(
-        y
+        x
     )
 
     # Instantiate model.
@@ -270,7 +277,7 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
 
-    model = resnet_v2(input_shape=input_shape, depth=depth)
+    model = resnet(input_shape=input_shape)
 
     model.compile(
         loss="categorical_crossentropy",
@@ -278,7 +285,6 @@ if __name__ == "__main__":
         metrics=["accuracy"],
     )
     model.summary()
-    print(model_type)
 
     lr_scheduler = LearningRateScheduler(lr_schedule)
 
@@ -288,44 +294,26 @@ if __name__ == "__main__":
 
     callbacks = [lr_reducer, lr_scheduler]
 
+    #configuration derived from the keras website
     datagen = ImageDataGenerator(
-        # set input mean to 0 over the dataset
         featurewise_center=False,
-        # set each sample mean to 0
         samplewise_center=False,
-        # divide inputs by std of dataset
         featurewise_std_normalization=False,
-        # divide each input by its std
         samplewise_std_normalization=False,
-        # apply ZCA whitening
         zca_whitening=False,
-        # epsilon for ZCA whitening
         zca_epsilon=1e-06,
-        # randomly rotate images in the range (deg 0 to 180)
         rotation_range=0,
-        # randomly shift images horizontally
         width_shift_range=0.1,
-        # randomly shift images vertically
         height_shift_range=0.1,
-        # set range for random shear
         shear_range=0.0,
-        # set range for random zoom
         zoom_range=0.0,
-        # set range for random channel shifts
         channel_shift_range=0.0,
-        # set mode for filling points outside the input boundaries
         fill_mode="nearest",
-        # value used for fill_mode = "constant"
         cval=0.0,
-        # randomly flip images
         horizontal_flip=True,
-        # randomly flip images
         vertical_flip=False,
-        # set rescaling factor (applied before any other transformation)
         rescale=None,
-        # set function that will be applied on each input
         preprocessing_function=None,
-        # image data format, either "channels_first" or "channels_last"
         data_format=None,
         # fraction of images reserved for validation (strictly between 0 and 1)
         validation_split=0.1,
