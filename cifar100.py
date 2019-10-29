@@ -70,19 +70,19 @@ def drop_block(A):
     """
     Inputs:
     A is the weights from the activation layer with shape [batch, row, col, chan]
-    mode turns off drop block during inference
 
     Return:
     activation layer with correlated blocks dropped
 
     Implementation from: https://arxiv.org/pdf/1810.12890.pdf
     """
+    print('A', A.shape)
 
     block_size = BLCKSIZE
     keep_prob = KEEPPROB
     feat_size = A.shape[2]
     input_shape = [
-        batch_size,
+        tf.shape(A)[0],
         feat_size - block_size + 1,
         feat_size - block_size + 1,
         A.shape[3],
@@ -262,6 +262,7 @@ def resnet(input_shape):
 if __name__ == "__main__":
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
     input_shape = x_train.shape[1:]
+
     x_train = x_train.astype("float32") / 255
     x_test = x_test.astype("float32") / 255
 
