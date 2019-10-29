@@ -36,7 +36,7 @@ KEEPPROB = 0.9  # probability of activation unit being kept
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
 
-model_type = "ResNet%d" % (depth)
+model_type = "ResNet%d" % (50)
 
 (x_train, y_train), (x_test, y_test) = cifar100.load_data()
 input_shape = x_train.shape[1:]
@@ -250,9 +250,7 @@ def resnet(input_shape):
     x = Activation("relu")(x)
     x = AveragePooling2D(pool_size=(2, 2))(x)
     x = Flatten()(x)
-    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(
-        x
-    )
+    outputs = Dense(num_classes, activation="softmax", kernel_initializer="he_normal")(x)
 
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs)
