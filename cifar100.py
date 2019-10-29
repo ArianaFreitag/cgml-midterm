@@ -178,6 +178,8 @@ def resnet(input_shape):
 
     # Start model definition.
     num_filters_in = 64
+
+    # Number of resnet blocks in the Resnet-50 
     num_res_blocks = [3, 4, 6, 3]
 
     inputs = Input(shape=input_shape)
@@ -194,7 +196,7 @@ def resnet(input_shape):
 
     # Instantiate the stack of residual units
     for stage in range(4):
-        for res_block in range(num_res_blocks[stage]):
+        for block_num in range(num_res_blocks[stage]):
             activation = "relu"
             batch_normalization = True
             strides = 1
@@ -227,7 +229,7 @@ def resnet(input_shape):
                 conv_first=False
             )
 
-            if res_block == 0:
+            if block_num == 0:
                 # linear projection residual shortcut connection to match
                 # changed dims
                 x = resnet_layer(
